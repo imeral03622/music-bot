@@ -4,6 +4,7 @@ import yt_dlp
 import os
 from dotenv import load_dotenv
 import re
+from discord import app_commands
 
 load_dotenv()
 
@@ -12,6 +13,8 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found")
 
+BOT_VERSION = "0.0.4"
+
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -19,13 +22,6 @@ bot = commands.Bot(
     command_prefix="!",
     intents=intents
 )
-
-music_queue = []
-
-current_track = None
-current_url = None
-
-loop_mode = False
 
 YDL_OPTIONS = {
     "format": "bestaudio/best",
@@ -38,9 +34,160 @@ FFMPEG_OPTIONS = {
     "options": "-vn"
 }
 
+def create_embed(
+    title,
+    description=None,
+    color=discord.Color.blue()
+):
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color
+    )
+
+    embed.set_footer(
+        text=f"Music Bot v{BOT_VERSION}"
+    )
+
+    return embed
+
+class Track:
+
+    def __init__(
+        self,
+        title,
+        url,
+        webpage_url,
+        stream_url,
+        duration,
+        thumbnail
+    ):
+        self.title = title
+        self.url = url
+        self.webpage_url = webpage_url
+        self.stream_url = stream_url
+        self.duration = duration
+        self.thumbnail = thumbnail
+
+    def duration_string(self):
+
+        if not self.duration:
+            return "unknown"
+
+        minutes = self.duration // 60
+        seconds = self.duration % 60
+
+        return f"{minutes}:{seconds:02d}"
+
+    def __str__(self):
+        return self.title
+
+    def create_embed(self):
+
+        embed = discord.Embed(
+            title=self.title,
+            url=self.webpage_url,
+            color=discord.Color.blue()
+        )
+
+        embed.add_field(
+            name="Duration",
+            value=self.duration_string(),
+            inline=True
+        )
+
+        if self.thumbnail:
+            embed.set_thumbnail(
+                url=self.thumbnail
+            )
+
+        return embed
+
+class MusicPlayer:
+
+    def __init__(self):
+        self.queue = []
+        self.current_track = None
+        self.loop_mode = False
+
+    async def play_song(self, channel, track):
+
+        voice = discord.utils.get(
+            bot.voice_clients,
+            guild=channel.guild
+        )
+
+        self.current_track = track
+
+        source = discord.FFmpegOpusAudio(
+            track.stream_url,
+            **FFMPEG_OPTIONS
+        )
+
+        voice.play(
+            source,
+            after=lambda e: bot.loop.create_task(
+                self.play_next(channel)
+            )
+        )
+
+        embed = track.create_embed()
+
+        embed.set_author(
+            name="Now Playing"
+        )
+
+        await channel.send(embed=embed)
+
+    async def play_next(self, channel):
+
+        if self.loop_mode and self.current_track:
+
+            await self.play_song(
+                channel,
+                self.current_track
+            )
+
+            return
+
+        if not self.queue:
+            return
+
+        next_track = self.queue.pop(0)
+
+        await self.play_song(
+            channel,
+            next_track
+        )
+
+    def add_to_queue(self, track):
+        self.queue.append(track)
+
+
+    def clear_queue(self):
+        self.queue.clear()
+
+
+    def remove_track(self, position):
+        return self.queue.pop(position)
+
+player = MusicPlayer()
+
 
 @bot.event
 async def on_ready():
+
+    try:
+        synced = await bot.tree.sync()
+
+        print(
+            f"synced {len(synced)} commands"
+        )
+
+    except Exception as e:
+        print(e)
+
     print(f"bot started: {bot.user}")
 
 async def get_track_info(query):
@@ -65,10 +212,32 @@ async def get_track_info(query):
 
                 info = info["entries"][0]
 
-            return {
-                "title": info.get("title", "unknown"),
-                "url": query
-            }
+            return Track(
+                title=info.get(
+                    "title",
+                    "unknown"
+                ),
+
+                url=query,
+
+                webpage_url=info.get(
+                    "webpage_url",
+                    query
+                ),
+
+                stream_url=info.get(
+                    "url"
+                ),
+
+                duration=info.get(
+                    "duration",
+                    0
+                ),
+
+                thumbnail=info.get(
+                    "thumbnail"
+                )
+            )
 
     return await bot.loop.run_in_executor(
         None,
@@ -76,218 +245,436 @@ async def get_track_info(query):
     )
 
 
-async def play_song(ctx, track):
-    global current_track
-    global current_url
+@bot.tree.command(
+    name="help",
+    description="Show all commands"
+)
+async def help_command(
+    interaction: discord.Interaction
+):
 
-    voice = ctx.voice_client
-
-    query = track["url"]
-
-    def get_stream():
-
-        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-
-            if query.startswith("http://") or query.startswith("https://"):
-
-                info = ydl.extract_info(
-                    query,
-                    download=False
-                )
-
-            else:
-
-                info = ydl.extract_info(
-                    f"ytsearch1:{query}",
-                    download=False
-                )
-
-                info = info["entries"][0]
-
-            return info["url"]
-
-    stream_url = await bot.loop.run_in_executor(
-        None,
-        get_stream
+    embed = create_embed(
+        "Music Bot Commands",
+        color=discord.Color.green()
     )
 
-    title = track["title"]
-
-    current_track = track
-    current_url = track["url"]
-
-    source = discord.FFmpegOpusAudio(
-        stream_url,
-        **FFMPEG_OPTIONS
+    embed.add_field(
+        name="/play",
+        value="Play song or add to queue",
+        inline=False
     )
 
-    voice.play(
-        source,
-        after=lambda e: bot.loop.create_task(
-            play_next(ctx)
-        )
+    embed.add_field(
+        name="/queue",
+        value="Show queue",
+        inline=False
     )
 
-    await ctx.send(f"now playing: {title}")
+    embed.add_field(
+        name="/nowplaying",
+        value="Current song",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/skip",
+        value="Skip current song",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/remove",
+        value="Remove track from queue",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/clear",
+        value="Clear queue",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/loop",
+        value="Toggle loop mode",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/stop",
+        value="Stop playback",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/leave",
+        value="Disconnect bot",
+        inline=False
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
 
 
-async def play_next(ctx):
-    global loop_mode
-    global current_url
+@bot.tree.command(
+    name="play",
+    description="Play a song or add it to queue"
+)
+@app_commands.describe(
+    query="Song name or YouTube URL"
+)
+async def play(
+    interaction: discord.Interaction,
+    query: str
+):
 
-    if loop_mode and current_url:
-        await play_song(ctx, current_url)
-        return
+    if not interaction.user.voice:
 
-    if not music_queue:
-        return
-
-    next_track = music_queue.pop(0)
-
-    await play_song(ctx, next_track)
-
-
-@bot.command()
-async def play(ctx, *, url: str):
-
-    if not ctx.voice_client:
-        if not ctx.author.voice:
-            await ctx.send("You are not in a voice channel")
-            return
-
-        channel = ctx.author.voice.channel
-        await channel.connect()
-
-    voice = ctx.voice_client
-
-    track = await get_track_info(url)
-
-    if voice.is_playing():
-
-        music_queue.append(track)
-
-        await ctx.send(
-            f"added to queue: {track['title']}"
+        embed = create_embed(
+            "Error",
+            "You are not in a voice channel",
+            discord.Color.red()
         )
 
+        await interaction.response.send_message(
+            embed=embed
+        )
+
         return
 
-    await play_song(ctx, track)
+    voice_client = interaction.guild.voice_client
 
+    if not voice_client:
 
-@bot.command()
-async def queue(ctx):
+        channel = interaction.user.voice.channel
 
-    if not music_queue:
-        await ctx.send("queue is empty")
+        voice_client = await channel.connect()
+
+    track = await get_track_info(query)
+
+    if voice_client.is_playing():
+
+        player.add_to_queue(track)
+
+        embed = create_embed(
+            "Added to Queue",
+            track.title,
+            discord.Color.orange()
+        )
+
+        if track.thumbnail:
+            embed.set_thumbnail(
+                url=track.thumbnail
+            )
+
+        await interaction.response.send_message(
+            embed=embed
+        )
+
         return
 
-    message = "queue:\n"
+    embed = create_embed(
+        "Loading...",
+        track.title,
+        discord.Color.blurple()
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
+
+    await player.play_song(
+        interaction.channel,
+        track
+    )
+
+
+@bot.tree.command(
+    name="queue",
+    description="Show current queue"
+)
+async def queue(
+    interaction: discord.Interaction
+):
+
+    if not player.queue:
+
+        embed = create_embed(
+            "Queue",
+            "Queue is empty",
+            discord.Color.orange()
+        )
+
+        await interaction.response.send_message(
+            embed=embed
+        )
+
+        return
+
+    embed = create_embed(
+        "Queue",
+        color=discord.Color.green()
+    )
 
     for index, track in enumerate(
-        music_queue,
+        player.queue,
         start=1
     ):
-        message += (
-        f"{index}. "
-        f"{track['title']}\n"
-    )
 
-    await ctx.send(message)
+        embed.add_field(
+            name=f"{index}. {track.title}",
+            value=f"Duration: {track.duration_string()}",
+            inline=False
+        )
 
-
-@bot.command()
-async def nowplaying(ctx):
-
-    if not current_track:
-        await ctx.send("nothing is playing")
-        return
-
-    await ctx.send(
-        f"now playing: "
-        f"{current_track['title']}"
+    await interaction.response.send_message(
+        embed=embed
     )
 
 
-@bot.command()
-async def skip(ctx):
+@bot.tree.command(
+    name="nowplaying",
+    description="Show current track"
+)
+async def nowplaying(
+    interaction: discord.Interaction
+):
 
-    if not ctx.voice_client:
+    if not player.current_track:
+
+        embed = create_embed(
+            "Nothing Playing",
+            "No track is currently playing",
+            discord.Color.orange()
+        )
+
+        await interaction.response.send_message(
+            embed=embed
+        )
+
         return
 
-    if not ctx.voice_client.is_playing():
+    embed = player.current_track.create_embed()
+
+    embed.set_author(
+        name="Now Playing"
+    )
+
+    embed.add_field(
+        name="Loop",
+        value="Enabled" if player.loop_mode else "Disabled",
+        inline=True
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
+
+
+@bot.tree.command(
+    name="skip",
+    description="Skip current track"
+)
+async def skip(
+    interaction: discord.Interaction
+):
+
+    voice_client = interaction.guild.voice_client
+
+    if not voice_client:
+
+        embed = create_embed(
+            "Error",
+            "Bot is not connected",
+            discord.Color.red()
+        )
+
+        await interaction.response.send_message(
+            embed=embed
+        )
+
         return
 
-    ctx.voice_client.stop()
+    if not voice_client.is_playing():
 
-    await ctx.send("skipped")
+        embed = create_embed(
+            "Error",
+            "Nothing is playing",
+            discord.Color.red()
+        )
+
+        await interaction.response.send_message(
+            embed=embed
+        )
+
+        return
+
+    voice_client.stop()
+
+    embed = create_embed(
+        "Skipped",
+        "Track skipped",
+        discord.Color.orange()
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
 
 
-@bot.command()
-async def clear(ctx):
+@bot.tree.command(
+    name="clear",
+    description="Clear queue"
+)
+async def clear(
+    interaction: discord.Interaction
+):
 
-    music_queue.clear()
+    player.clear_queue()
 
-    await ctx.send("queue cleared")
+    embed = create_embed(
+        "Queue Cleared",
+        color=discord.Color.orange()
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
 
 
-@bot.command()
-async def remove(ctx, position: int):
+@bot.tree.command(
+    name="remove",
+    description="Remove track from queue"
+)
+@app_commands.describe(
+    position="Track number in queue"
+)
+async def remove(
+    interaction: discord.Interaction,
+    position: int
+):
 
     if position < 1:
-        await ctx.send("invalid position")
+
+        embed = create_embed(
+            "Error",
+            "Invalid position",
+            discord.Color.red()
+        )
+
+        await interaction.response.send_message(
+            embed=embed
+        )
+
         return
 
-    if position > len(music_queue):
-        await ctx.send("invalid position")
+    if position > len(player.queue):
+
+        embed = create_embed(
+            "Error",
+            "Invalid position",
+            discord.Color.red()
+        )
+
+        await interaction.response.send_message(
+            embed=embed
+        )
+
         return
 
-    removed = music_queue.pop(position - 1)
+    removed = player.remove_track(
+        position - 1
+    )
 
-    await ctx.send(
-        f"removed: {removed['title']}"
+    embed = create_embed(
+        "Removed",
+        removed.title,
+        discord.Color.orange()
+    )
+
+    await interaction.response.send_message(
+        embed=embed
     )
 
 
-@bot.command()
-async def loop(ctx):
-    global loop_mode
+@bot.tree.command(
+    name="loop",
+    description="Toggle loop mode"
+)
+async def loop(
+    interaction: discord.Interaction
+):
 
-    loop_mode = not loop_mode
+    player.loop_mode = not player.loop_mode
 
-    if loop_mode:
-        await ctx.send("loop enabled")
-    else:
-        await ctx.send("loop disabled")
+    embed = create_embed(
+        "Loop",
+        (
+            "Loop enabled"
+            if player.loop_mode
+            else "Loop disabled"
+        ),
+        discord.Color.blurple()
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
 
 
-@bot.command()
-async def stop(ctx):
+@bot.tree.command(
+    name="stop",
+    description="Stop playback"
+)
+async def stop(
+    interaction: discord.Interaction
+):
 
-    music_queue.clear()
+    voice_client = interaction.guild.voice_client
 
-    if ctx.voice_client:
-        ctx.voice_client.stop()
-        await ctx.send("stopped")
+    player.clear_queue()
+
+    if voice_client:
+        voice_client.stop()
+
+    embed = create_embed(
+        "Stopped",
+        "Playback stopped",
+        discord.Color.orange()
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
 
 
-@bot.command()
-async def leave(ctx):
-    global current_track
-    global current_url
-    global loop_mode
+@bot.tree.command(
+    name="leave",
+    description="Disconnect bot"
+)
+async def leave(
+    interaction: discord.Interaction
+):
 
-    music_queue.clear()
+    voice_client = interaction.guild.voice_client
 
-    current_track = None
-    current_url = None
+    player.clear_queue()
+    player.current_track = None
+    player.loop_mode = False
 
-    loop_mode = False
+    if voice_client:
+        await voice_client.disconnect()
 
-    if ctx.voice_client:
-        await ctx.voice_client.disconnect()
+    embed = create_embed(
+        "Disconnected",
+        "Bot disconnected",
+        discord.Color.orange()
+    )
 
-    await ctx.send("disconnected")
+    await interaction.response.send_message(
+        embed=embed
+    )
 
 
 bot.run(TOKEN)
