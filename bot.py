@@ -3,6 +3,7 @@ from discord.ext import commands
 import yt_dlp
 import os
 from dotenv import load_dotenv
+import re
 
 load_dotenv()
 
@@ -42,28 +43,78 @@ FFMPEG_OPTIONS = {
 async def on_ready():
     print(f"bot started: {bot.user}")
 
+async def get_track_info(query):
 
-async def play_song(ctx, url):
+    def extract():
+
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+
+            if query.startswith("http://") or query.startswith("https://"):
+
+                info = ydl.extract_info(
+                    query,
+                    download=False
+                )
+
+            else:
+
+                info = ydl.extract_info(
+                    f"ytsearch1:{query}",
+                    download=False
+                )
+
+                info = info["entries"][0]
+
+            return {
+                "title": info.get("title", "unknown"),
+                "url": query
+            }
+
+    return await bot.loop.run_in_executor(
+        None,
+        extract
+    )
+
+
+async def play_song(ctx, track):
     global current_track
     global current_url
 
     voice = ctx.voice_client
 
-    def get_stream():
-        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = ydl.extract_info(url, download=False)
-            return (
-                info["url"],
-                info.get("title", "unknown")
-            )
+    query = track["url"]
 
-    stream_url, title = await bot.loop.run_in_executor(
+    def get_stream():
+
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+
+            if query.startswith("http://") or query.startswith("https://"):
+
+                info = ydl.extract_info(
+                    query,
+                    download=False
+                )
+
+            else:
+
+                info = ydl.extract_info(
+                    f"ytsearch1:{query}",
+                    download=False
+                )
+
+                info = info["entries"][0]
+
+            return info["url"]
+
+    stream_url = await bot.loop.run_in_executor(
         None,
         get_stream
     )
 
-    current_track = title
-    current_url = url
+    title = track["title"]
+
+    current_track = track
+    current_url = track["url"]
 
     source = discord.FFmpegOpusAudio(
         stream_url,
@@ -91,13 +142,13 @@ async def play_next(ctx):
     if not music_queue:
         return
 
-    next_url = music_queue.pop(0)
+    next_track = music_queue.pop(0)
 
-    await play_song(ctx, next_url)
+    await play_song(ctx, next_track)
 
 
 @bot.command()
-async def play(ctx, url: str):
+async def play(ctx, *, url: str):
 
     if not ctx.voice_client:
         if not ctx.author.voice:
@@ -109,15 +160,19 @@ async def play(ctx, url: str):
 
     voice = ctx.voice_client
 
+    track = await get_track_info(url)
+
     if voice.is_playing():
-        music_queue.append(url)
+
+        music_queue.append(track)
 
         await ctx.send(
-            f"added to queue (position {len(music_queue)})"
+            f"added to queue: {track['title']}"
         )
+
         return
 
-    await play_song(ctx, url)
+    await play_song(ctx, track)
 
 
 @bot.command()
@@ -129,11 +184,14 @@ async def queue(ctx):
 
     message = "queue:\n"
 
-    for index, url in enumerate(
+    for index, track in enumerate(
         music_queue,
         start=1
     ):
-        message += f"{index}. {url}\n"
+        message += (
+        f"{index}. "
+        f"{track['title']}\n"
+    )
 
     await ctx.send(message)
 
@@ -146,7 +204,8 @@ async def nowplaying(ctx):
         return
 
     await ctx.send(
-        f"now playing: {current_track}"
+        f"now playing: "
+        f"{current_track['title']}"
     )
 
 
@@ -186,7 +245,7 @@ async def remove(ctx, position: int):
     removed = music_queue.pop(position - 1)
 
     await ctx.send(
-        f"removed: {removed}"
+        f"removed: {removed['title']}"
     )
 
 
