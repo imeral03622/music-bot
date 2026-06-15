@@ -1,10 +1,10 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
+from dotenv import load_dotenv
 import yt_dlp
 import os
-from dotenv import load_dotenv
 import re
-from discord import app_commands
 
 load_dotenv()
 
@@ -13,7 +13,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found")
 
-BOT_VERSION = "0.0.4"
+BOT_VERSION = "0.0.6"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -138,7 +138,10 @@ class MusicPlayer:
             name="Now Playing"
         )
 
-        await channel.send(embed=embed)
+        await channel.send(
+            embed=embed,
+            view=PlayerControls()
+        )
 
     async def play_next(self, channel):
 
@@ -172,7 +175,106 @@ class MusicPlayer:
     def remove_track(self, position):
         return self.queue.pop(position)
 
-player = MusicPlayer()
+    players = {}
+
+def get_player(guild_id):
+
+    if guild_id not in players:
+        players[guild_id] = MusicPlayer()
+
+    return players[guild_id]
+
+players = {}
+
+
+class PlayerControls(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=None
+        )
+
+    @discord.ui.button(
+        label="Skip",
+        emoji="\U000023ED",
+        style=discord.ButtonStyle.primary
+    )
+    async def skip_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        voice = interaction.guild.voice_client
+
+        if voice and voice.is_playing():
+
+            voice.stop()
+
+            await interaction.response.send_message(
+                embed=create_embed(
+                    "Skipped",
+                    color=discord.Color.orange()
+                ),
+                ephemeral=True
+            )
+
+    @discord.ui.button(
+        label="Loop",
+        emoji="\U0001F501",
+        style=discord.ButtonStyle.secondary
+    )
+    async def loop_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        player.loop_mode = (
+            not player.loop_mode
+        )
+
+        await interaction.response.send_message(
+            embed=create_embed(
+                "Loop",
+                (
+                    "Enabled"
+                    if player.loop_mode
+                    else "Disabled"
+                ),
+                discord.Color.blurple()
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Stop",
+        emoji="\U000023F9",
+        style=discord.ButtonStyle.danger
+    )
+    async def stop_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        voice = interaction.guild.voice_client
+
+        player.clear_queue()
+
+        if voice:
+            voice.stop()
+
+        await interaction.response.send_message(
+            embed=create_embed(
+                "Stopped",
+                color=discord.Color.red()
+            ),
+            ephemeral=True
+        )
 
 
 @bot.event
@@ -329,16 +431,20 @@ async def play(
     query: str
 ):
 
+    player = get_player(
+        interaction.guild.id
+    )
+
+    await interaction.response.defer()
+
     if not interaction.user.voice:
 
-        embed = create_embed(
-            "Error",
-            "You are not in a voice channel",
-            discord.Color.red()
-        )
-
-        await interaction.response.send_message(
-            embed=embed
+        await interaction.followup.send(
+            embed=create_embed(
+                "Error",
+                "You are not in a voice channel",
+                discord.Color.red()
+            )
         )
 
         return
@@ -368,20 +474,18 @@ async def play(
                 url=track.thumbnail
             )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=embed
         )
 
         return
 
-    embed = create_embed(
-        "Loading...",
-        track.title,
-        discord.Color.blurple()
-    )
-
-    await interaction.response.send_message(
-        embed=embed
+    await interaction.followup.send(
+        embed=create_embed(
+            "Loading...",
+            track.title,
+            discord.Color.blurple()
+        )
     )
 
     await player.play_song(
@@ -397,6 +501,10 @@ async def play(
 async def queue(
     interaction: discord.Interaction
 ):
+
+    player = get_player(
+        interaction.guild.id
+    )
 
     if not player.queue:
 
@@ -440,6 +548,10 @@ async def queue(
 async def nowplaying(
     interaction: discord.Interaction
 ):
+
+    player = get_player(
+        interaction.guild.id
+    )
 
     if not player.current_track:
 
@@ -531,6 +643,10 @@ async def clear(
     interaction: discord.Interaction
 ):
 
+    player = get_player(
+        interaction.guild.id
+    )
+
     player.clear_queue()
 
     embed = create_embed(
@@ -554,6 +670,10 @@ async def remove(
     interaction: discord.Interaction,
     position: int
 ):
+
+    player = get_player(
+        interaction.guild.id
+    )
 
     if position < 1:
 
@@ -606,6 +726,10 @@ async def loop(
     interaction: discord.Interaction
 ):
 
+    player = get_player(
+        interaction.guild.id
+    )
+
     player.loop_mode = not player.loop_mode
 
     embed = create_embed(
@@ -630,6 +754,10 @@ async def loop(
 async def stop(
     interaction: discord.Interaction
 ):
+
+    player = get_player(
+        interaction.guild.id
+    )
 
     voice_client = interaction.guild.voice_client
 
@@ -656,6 +784,10 @@ async def stop(
 async def leave(
     interaction: discord.Interaction
 ):
+
+    player = get_player(
+        interaction.guild.id
+    )
 
     voice_client = interaction.guild.voice_client
 
