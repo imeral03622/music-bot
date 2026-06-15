@@ -13,7 +13,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found")
 
-BOT_VERSION = "0.0.6"
+BOT_VERSION = "0.0.7"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -109,7 +109,7 @@ class MusicPlayer:
     def __init__(self):
         self.queue = []
         self.current_track = None
-        self.loop_mode = False
+        self.repeat_mode = False
 
     async def play_song(self, channel, track):
 
@@ -145,7 +145,7 @@ class MusicPlayer:
 
     async def play_next(self, channel):
 
-        if self.loop_mode and self.current_track:
+        if self.repeat_mode and self.current_track:
 
             await self.play_song(
                 channel,
@@ -199,7 +199,7 @@ class PlayerControls(
 
     @discord.ui.button(
         label="Skip",
-        emoji="\U000023ED",
+        emoji="<:next:1516106825081159680>",#"\U000023ED",
         style=discord.ButtonStyle.primary
     )
     async def skip_button(
@@ -223,26 +223,30 @@ class PlayerControls(
             )
 
     @discord.ui.button(
-        label="Loop",
-        emoji="\U0001F501",
+        label="repeat",
+        emoji="<:repeat:1516109684493516841>",#"\U0001F501",
         style=discord.ButtonStyle.secondary
     )
-    async def loop_button(
+    async def repeat_button(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
 
-        player.loop_mode = (
-            not player.loop_mode
+        player = get_player(
+            interaction.guild.id
+        )
+
+        player.repeat_mode = (
+            not player.repeat_mode
         )
 
         await interaction.response.send_message(
             embed=create_embed(
-                "Loop",
+                "repeat",
                 (
                     "Enabled"
-                    if player.loop_mode
+                    if player.repeat_mode
                     else "Disabled"
                 ),
                 discord.Color.blurple()
@@ -252,7 +256,7 @@ class PlayerControls(
 
     @discord.ui.button(
         label="Stop",
-        emoji="\U000023F9",
+        emoji="<:stop:1516106996552826910>",#"\U000023F9",
         style=discord.ButtonStyle.danger
     )
     async def stop_button(
@@ -262,6 +266,10 @@ class PlayerControls(
     ):
 
         voice = interaction.guild.voice_client
+
+        player = get_player(
+            interaction.guild.id
+        )
 
         player.clear_queue()
 
@@ -397,8 +405,8 @@ async def help_command(
     )
 
     embed.add_field(
-        name="/loop",
-        value="Toggle loop mode",
+        name="/repeat",
+        value="Toggle repeat mode",
         inline=False
     )
 
@@ -574,8 +582,8 @@ async def nowplaying(
     )
 
     embed.add_field(
-        name="Loop",
-        value="Enabled" if player.loop_mode else "Disabled",
+        name="repeat",
+        value="Enabled" if player.repeat_mode else "Disabled",
         inline=True
     )
 
@@ -719,10 +727,10 @@ async def remove(
 
 
 @bot.tree.command(
-    name="loop",
-    description="Toggle loop mode"
+    name="repeat",
+    description="Toggle repeat mode"
 )
-async def loop(
+async def repeat(
     interaction: discord.Interaction
 ):
 
@@ -730,14 +738,14 @@ async def loop(
         interaction.guild.id
     )
 
-    player.loop_mode = not player.loop_mode
+    player.repeat_mode = not player.repeat_mode
 
     embed = create_embed(
-        "Loop",
+        "repeat",
         (
-            "Loop enabled"
-            if player.loop_mode
-            else "Loop disabled"
+            "repeat enabled"
+            if player.repeat_mode
+            else "repeat disabled"
         ),
         discord.Color.blurple()
     )
@@ -793,7 +801,7 @@ async def leave(
 
     player.clear_queue()
     player.current_track = None
-    player.loop_mode = False
+    player.repeat_mode = False
 
     if voice_client:
         await voice_client.disconnect()
