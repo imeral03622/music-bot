@@ -4,7 +4,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 import yt_dlp
 import os
-import re
+import asyncio
 
 load_dotenv()
 
@@ -13,7 +13,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found")
 
-BOT_VERSION = "0.0.7"
+BOT_VERSION = "0.0.8"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -110,6 +110,7 @@ class MusicPlayer:
         self.queue = []
         self.current_track = None
         self.repeat_mode = False
+        self.disconnect_task = None
 
     async def play_song(self, channel, track):
 
@@ -119,6 +120,12 @@ class MusicPlayer:
         )
 
         self.current_track = track
+
+        if self.disconnect_task:
+
+            self.disconnect_task.cancel()
+
+            self.disconnect_task = None
 
         source = discord.FFmpegOpusAudio(
             track.stream_url,
@@ -155,6 +162,16 @@ class MusicPlayer:
             return
 
         if not self.queue:
+
+            if self.disconnect_task:
+                self.disconnect_task.cancel()
+
+            self.disconnect_task = bot.loop.create_task(
+                self.auto_disconnect(
+                    channel.guild
+                )
+            )
+
             return
 
         next_track = self.queue.pop(0)
@@ -174,6 +191,33 @@ class MusicPlayer:
 
     def remove_track(self, position):
         return self.queue.pop(position)
+
+    async def auto_disconnect(
+        self,
+        guild
+    ):
+
+        await asyncio.sleep(900)
+
+        voice = guild.voice_client
+
+        if not voice:
+            return
+
+        if voice.is_playing():
+            return
+
+        if self.queue:
+            return
+
+        await voice.disconnect()
+
+        self.current_track = None
+        self.repeat_mode = False
+
+        print(
+            f"Disconnected from {guild.name} because of inactivity"
+        )
 
     players = {}
 
@@ -465,7 +509,22 @@ async def play(
 
         voice_client = await channel.connect()
 
-    track = await get_track_info(query)
+    try:
+        track = await get_track_info(query)
+
+    except Exception as e:
+
+        await interaction.followup.send(
+            embed=create_embed(
+                "Error",
+                "Unable to load this track",
+                discord.Color.red()
+            )
+        )
+
+        print(e)
+
+        return
 
     if voice_client.is_playing():
 
@@ -811,6 +870,9 @@ async def leave(
         "Bot disconnected",
         discord.Color.orange()
     )
+
+    if interaction.guild.id in players:
+        del players[interaction.guild.id]
 
     await interaction.response.send_message(
         embed=embed
