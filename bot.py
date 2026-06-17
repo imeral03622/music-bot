@@ -1,10 +1,14 @@
 import discord
-from discord.ext import commands
-from discord import app_commands
-from dotenv import load_dotenv
 import yt_dlp
 import os
 import asyncio
+import time
+from discord.ext import commands
+from discord import app_commands
+from dotenv import load_dotenv
+from ytmusicapi import YTMusic
+
+ytmusic = YTMusic()
 
 load_dotenv()
 
@@ -13,7 +17,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found")
 
-BOT_VERSION = "0.0.8"
+BOT_VERSION = "0.0.9"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -59,24 +63,26 @@ class Track:
         title,
         url,
         webpage_url,
-        stream_url,
         duration,
-        thumbnail
+        thumbnail,
+        source
     ):
         self.title = title
         self.url = url
         self.webpage_url = webpage_url
-        self.stream_url = stream_url
         self.duration = duration
         self.thumbnail = thumbnail
+        self.source = source
 
     def duration_string(self):
 
         if not self.duration:
             return "unknown"
 
-        minutes = self.duration // 60
-        seconds = self.duration % 60
+        duration = int(self.duration)
+
+        minutes = duration // 60
+        seconds = duration % 60
 
         return f"{minutes}:{seconds:02d}"
 
@@ -94,6 +100,12 @@ class Track:
         embed.add_field(
             name="Duration",
             value=self.duration_string(),
+            inline=True
+        )
+
+        embed.add_field(
+            name="Source",
+            value=self.source,
             inline=True
         )
 
@@ -127,8 +139,12 @@ class MusicPlayer:
 
             self.disconnect_task = None
 
+        stream_url = await get_fresh_stream_url(
+            track.webpage_url
+        )
+
         source = discord.FFmpegOpusAudio(
-            track.stream_url,
+            stream_url,
             **FFMPEG_OPTIONS
         )
 
@@ -218,8 +234,6 @@ class MusicPlayer:
         print(
             f"Disconnected from {guild.name} because of inactivity"
         )
-
-    players = {}
 
 def get_player(guild_id):
 
@@ -333,6 +347,20 @@ class PlayerControls(
 async def on_ready():
 
     try:
+        GUILD_ID = 1055384191459659817
+
+        guild = discord.Object(
+            id=GUILD_ID
+        )
+
+        bot.tree.clear_commands(
+            guild=guild
+        )
+
+        await bot.tree.sync(
+            guild=guild
+        )
+
         synced = await bot.tree.sync()
 
         print(
@@ -343,6 +371,7 @@ async def on_ready():
         print(e)
 
     print(f"bot started: {bot.user}")
+
 
 async def get_track_info(query):
 
@@ -379,10 +408,6 @@ async def get_track_info(query):
                     query
                 ),
 
-                stream_url=info.get(
-                    "url"
-                ),
-
                 duration=info.get(
                     "duration",
                     0
@@ -390,6 +415,11 @@ async def get_track_info(query):
 
                 thumbnail=info.get(
                     "thumbnail"
+                ),
+
+                source=info.get(
+                    "extractor_key",
+                    "Unknown"
                 )
             )
 
@@ -399,76 +429,186 @@ async def get_track_info(query):
     )
 
 
-@bot.tree.command(
-    name="help",
-    description="Show all commands"
-)
-async def help_command(
-    interaction: discord.Interaction
+async def get_fresh_stream_url(youtube_url):
+
+    def extract():
+
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "quiet": True,
+            "noplaylist": True,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android"]
+                }
+            }
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
+            info = ydl.extract_info(
+                youtube_url,
+                download=False
+            )
+
+            return info["url"]
+
+    return await bot.loop.run_in_executor(
+        None,
+        extract
+    )
+
+
+async def search_track(query):
+
+    def extract():
+
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+
+            search_sources = [
+                f"ytsearch10:{query}"
+            ]
+
+            for source in search_sources:
+
+                source_name = (
+                    "SoundCloud"
+                    if source.startswith("scsearch")
+                    else "YouTube"
+                )
+
+                try:
+
+                    info = ydl.extract_info(
+                        source,
+                        download=False
+                    )
+
+                    if not info:
+                        continue
+
+                    entries = info.get("entries", [])
+
+                    best_entry = None
+
+                    for entry in entries:
+
+                        duration = int(
+                            entry.get("duration", 0) or 0
+                        )
+
+                        if duration >= 60:
+                            best_entry = entry
+                            break
+
+                    if not best_entry and entries:
+                        best_entry = entries[0]
+
+                    if not best_entry:
+                        continue
+
+                    return Track(
+                        title=best_entry.get(
+                            "title",
+                            "unknown"
+                        ),
+                        url=query,
+                        webpage_url=best_entry.get(
+                            "webpage_url",
+                            query
+                        ),
+                        duration=int(
+                            best_entry.get(
+                                "duration",
+                                0
+                            ) or 0
+                        ),
+                        thumbnail=best_entry.get(
+                            "thumbnail"
+                        ),
+                        source=source_name
+                    )
+
+                except Exception:
+                    continue
+
+            raise Exception(
+                "No search results"
+            )
+
+    return await bot.loop.run_in_executor(
+        None,
+        extract
+    )
+
+
+async def autocomplete_tracks(current: str):
+
+    if len(current) < 2:
+        return []
+
+    def search():
+
+        results = ytmusic.search(
+            current,
+            filter="songs",
+            limit=10
+        )
+
+        tracks = []
+
+        for item in results:
+
+            title = item.get(
+                "title",
+                "Unknown"
+            )
+
+            artists = ", ".join(
+                artist["name"]
+                for artist in item.get(
+                    "artists",
+                    []
+                )
+            )
+
+            tracks.append(
+                (
+                    f"{title} - {artists}",
+                    item["videoId"]
+                )
+            )
+
+        return tracks
+
+    return await bot.loop.run_in_executor(
+        None,
+        search
+    )
+
+
+async def play_autocomplete(
+    interaction: discord.Interaction,
+    current: str
 ):
 
-    embed = create_embed(
-        "Music Bot Commands",
-        color=discord.Color.green()
-    )
+    try:
 
-    embed.add_field(
-        name="/play",
-        value="Play song or add to queue",
-        inline=False
-    )
+        tracks = await autocomplete_tracks(
+            current
+        )
 
-    embed.add_field(
-        name="/queue",
-        value="Show queue",
-        inline=False
-    )
+        return [
+            app_commands.Choice(
+                name=name[:100],
+                value=video_id
+            )
+            for name, video_id in tracks[:15]
+        ]
 
-    embed.add_field(
-        name="/nowplaying",
-        value="Current song",
-        inline=False
-    )
+    except Exception:
 
-    embed.add_field(
-        name="/skip",
-        value="Skip current song",
-        inline=False
-    )
-
-    embed.add_field(
-        name="/remove",
-        value="Remove track from queue",
-        inline=False
-    )
-
-    embed.add_field(
-        name="/clear",
-        value="Clear queue",
-        inline=False
-    )
-
-    embed.add_field(
-        name="/repeat",
-        value="Toggle repeat mode",
-        inline=False
-    )
-
-    embed.add_field(
-        name="/stop",
-        value="Stop playback",
-        inline=False
-    )
-
-    embed.add_field(
-        name="/leave",
-        value="Disconnect bot",
-        inline=False
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
+        return []
 
 
 @bot.tree.command(
@@ -477,6 +617,9 @@ async def help_command(
 )
 @app_commands.describe(
     query="Song name or YouTube URL"
+)
+@app_commands.autocomplete(
+    query=play_autocomplete
 )
 async def play(
     interaction: discord.Interaction,
@@ -510,7 +653,25 @@ async def play(
         voice_client = await channel.connect()
 
     try:
-        track = await get_track_info(query)
+        if query.startswith(
+            ("http://", "https://")
+        ):
+
+            track = await get_track_info(
+                query
+            )
+
+        elif len(query) == 11:
+
+            track = await get_track_info(
+                f"https://www.youtube.com/watch?v={query}"
+            )
+
+        else:
+
+            track = await search_track(
+                query
+            )
 
     except Exception as e:
 
@@ -826,6 +987,8 @@ async def stop(
         interaction.guild.id
     )
 
+    player.repeat_mode = False
+
     voice_client = interaction.guild.voice_client
 
     player.clear_queue()
@@ -873,6 +1036,78 @@ async def leave(
 
     if interaction.guild.id in players:
         del players[interaction.guild.id]
+
+    await interaction.response.send_message(
+        embed=embed
+    )
+
+
+@bot.tree.command(
+    name="help",
+    description="Show all commands"
+)
+async def help_command(
+    interaction: discord.Interaction
+):
+
+    embed = create_embed(
+        "Music Bot Commands",
+        color=discord.Color.green()
+    )
+
+    embed.add_field(
+        name="/play",
+        value="Play song or add to queue",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/queue",
+        value="Show queue",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/nowplaying",
+        value="Current song",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/skip",
+        value="Skip current song",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/remove",
+        value="Remove track from queue",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/clear",
+        value="Clear queue",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/repeat",
+        value="Toggle repeat mode",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/stop",
+        value="Stop playback",
+        inline=False
+    )
+
+    embed.add_field(
+        name="/leave",
+        value="Disconnect bot",
+        inline=False
+    )
 
     await interaction.response.send_message(
         embed=embed
