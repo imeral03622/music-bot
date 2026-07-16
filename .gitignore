@@ -1,3 +1,18 @@
 .env
-__pycache__/
 *.pyc
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+music-bot/
+venv/
+.venv/
+
+# Runtime data
+data/status.json
