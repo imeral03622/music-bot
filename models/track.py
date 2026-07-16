@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from data.constants import COLORS
 
 import discord
 
@@ -28,7 +29,7 @@ class Track:
         embed = discord.Embed(
             title=self.title,
             url=self.webpage_url,
-            color=discord.Color.blue()
+            color=COLORS["track"]
         )
 
         embed.add_field(

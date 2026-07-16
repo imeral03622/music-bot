@@ -9,15 +9,20 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found")
 
-BOT_VERSION = "0.1.1"
+
+BOT_VERSION = "0.1.2"
 
 GUILD_ID = 1055384191459659817
 
-STATUS_CHANNEL_ID = 1519370336351686670
-
 MAIN_CHANNEL_ID = 1055384191459659820
 
+STATUS_CHANNEL_ID = 1519370336351686670
+
+
 AUTO_DISCONNECT_SECONDS = 900
+
+CLOCK_SYNC_DELAY_SECONDS = 30
+
 
 YDL_OPTIONS = {
     "format": "bestaudio[ext=webm]/bestaudio/best",
@@ -29,6 +34,7 @@ YDL_OPTIONS = {
     #     }
     # }
 }
+
 
 FFMPEG_OPTIONS = {
     "before_options": (

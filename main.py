@@ -1,10 +1,15 @@
-import discord
 import asyncio
 import time
+import discord
 
 from discord.ext import commands
 
-from config import TOKEN, MAIN_CHANNEL_ID, STATUS_CHANNEL_ID
+from config import (
+    TOKEN,
+    MAIN_CHANNEL_ID,
+    STATUS_CHANNEL_ID,
+    CLOCK_SYNC_DELAY_SECONDS
+)
 
 from commands.music import register_music_commands
 from commands.system import register_system_commands
@@ -25,7 +30,6 @@ bot = commands.Bot(
 register_music_commands(bot)
 register_system_commands(bot)
 
-
 heartbeat_task = None
 
 
@@ -44,6 +48,14 @@ async def on_ready():
         )
 
     # ==============================
+    # WAIT FOR SYSTEM CLOCK
+    # Gives Raspberry Pi time to
+    # synchronize its clock after
+    # an unexpected power loss.
+    # ==============================
+    await asyncio.sleep(CLOCK_SYNC_DELAY_SECONDS)
+
+    # ==============================
     # CRASH CHECK (power loss detection)
     # ==============================
     status = load_status()
@@ -52,13 +64,16 @@ async def on_ready():
         status
         and not status.get("clean_shutdown", False)
     ):
+
         last_seen = status.get("last_seen")
 
-        startup_time = int(time.time())
+        startup_time = await wait_for_clock_sync(last_seen)
 
         downtime = startup_time - last_seen
 
-        channel = bot.get_channel(STATUS_CHANNEL_ID)
+        channel = bot.get_channel(
+            STATUS_CHANNEL_ID
+        )
 
         if channel:
 
@@ -81,20 +96,36 @@ async def on_ready():
 
     # if channel:
     #     await channel.send(
-    #         "?? Hey everyone!\n\n"
-    #         "I'm Sona ? your personal DJ in this server.\n\n"
-    #         "I may not be able to join your matches, but I *can* keep your world alive with music ?\n\n"
-    #         "Just tell me what you want:\n"
-    #         "? /play song name or link\n"
-    #         "? /queue to see what's next\n"
-    #         "? /skip if you're feeling chaotic\n\n"
-    #         "I'm still learning and improving, but I promise to do my best for you ?\n\n"
-    #         "Let's make this place sound amazing together ?"
+    #         "..."
     #     )
 
     # ==============================
     # END OF ANNOUNCEMENT BLOCK
     # ==============================
 
+
+async def wait_for_clock_sync(last_seen: int) -> int:
+    """
+    Wait until the system clock looks sane after boot.
+
+    Returns current unix timestamp.
+    """
+
+    timeout = 120          # maximum wait (seconds)
+    safety_margin = 10     # clock must be at least 10 s newer
+
+    start = time.monotonic()
+
+    while True:
+
+        now = int(time.time())
+
+        if now >= last_seen + safety_margin:
+            return now
+
+        if time.monotonic() - start >= timeout:
+            return now
+
+        await asyncio.sleep(1)
 
 bot.run(TOKEN)

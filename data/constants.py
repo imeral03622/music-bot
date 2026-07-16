@@ -1,17 +1,58 @@
-GUILD_ID = 1055384191459659817
+import discord
 
-EMOJI_SKIP = "<:next:1516106825081159680>"
-EMOJI_REPEAT = "<:repeat:1516109684493516841>"
-EMOJI_STOP = "<:stop:1516106996552826910>"
 
-QUEUE_EMPTY_MESSAGE = "Queue is empty"
+EMOJIS = {
 
-NOTHING_PLAYING_MESSAGE = "No track is currently playing"
+    "skip":
+        "<:next:1516106825081159680>",
 
-NOT_IN_VOICE_MESSAGE = "You are not in a voice channel"
+    "repeat":
+        "<:repeat:1516109684493516841>",
 
-BOT_NOT_CONNECTED_MESSAGE = "Bot is not connected"
+    "stop":
+        "<:stop:1516106996552826910>",
 
-TRACK_LOAD_ERROR_MESSAGE = "Unable to load this track"
+}
 
-INVALID_POSITION_MESSAGE = "Invalid position"
+
+MESSAGES = {
+
+    "queue_empty":
+        "Queue is empty",
+
+    "nothing_playing":
+        "No track is currently playing",
+
+    "not_in_voice":
+        "You are not in a voice channel",
+
+    "bot_not_connected":
+        "Bot is not connected",
+
+    "track_load_error":
+        "Unable to load this track",
+
+    "invalid_position":
+        "Invalid position",
+
+}
+
+
+COLORS = {
+
+    "error":
+        discord.Color.red(),
+
+    "success":
+        discord.Color.orange(),
+
+    "info":
+        discord.Color.blurple(),
+
+    "queue":
+        discord.Color.green(),
+
+    "track":
+        discord.Color.blue(),
+
+}

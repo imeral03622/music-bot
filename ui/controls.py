@@ -2,6 +2,10 @@ import discord
 
 #from player.player_manager import get_player
 from ui.embeds import create_embed
+from data.constants import (
+    EMOJIS,
+    COLORS
+)
 
 
 class PlayerControls(discord.ui.View):
@@ -13,7 +17,7 @@ class PlayerControls(discord.ui.View):
 
     @discord.ui.button(
         label="Skip",
-        emoji="<:next:1516106825081159680>",
+        emoji=EMOJIS["skip"],
         style=discord.ButtonStyle.primary
     )
     async def skip_button(
@@ -30,14 +34,14 @@ class PlayerControls(discord.ui.View):
             await interaction.response.send_message(
                 embed=create_embed(
                     "Skipped",
-                    color=discord.Color.orange()
+                    color=COLORS["success"]
                 ),
                 ephemeral=True
             )
 
     @discord.ui.button(
         label="Repeat",
-        emoji="<:repeat:1516109684493516841>",
+        emoji=EMOJIS["repeat"],
         style=discord.ButtonStyle.secondary
     )
     async def repeat_button(
@@ -61,14 +65,14 @@ class PlayerControls(discord.ui.View):
                     if self.player.repeat_mode
                     else "Disabled"
                 ),
-                discord.Color.blurple()
+                COLORS["info"]
             ),
             ephemeral=True
         )
 
     @discord.ui.button(
         label="Stop",
-        emoji="<:stop:1516106996552826910>",
+        emoji=EMOJIS["stop"],
         style=discord.ButtonStyle.danger
     )
     async def stop_button(
@@ -90,7 +94,7 @@ class PlayerControls(discord.ui.View):
         await interaction.response.send_message(
             embed=create_embed(
                 "Stopped",
-                color=discord.Color.red()
+                color=COLORS["error"]
             ),
             ephemeral=True
         )

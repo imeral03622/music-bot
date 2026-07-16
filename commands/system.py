@@ -2,6 +2,7 @@ import discord
 
 from ui.embeds import create_embed
 from config import GUILD_ID
+from data.constants import COLORS
 
 
 def register_system_commands(bot):
@@ -46,7 +47,7 @@ def register_system_commands(bot):
 
         embed = create_embed(
             "Music Bot Commands",
-            color=discord.Color.green()
+            color=COLORS["info"]
         )
 
         embed.add_field(
