@@ -1,28 +1,13 @@
 import discord
-
 from discord import app_commands
 
+from commands.command_utils import send_followup_error
+from data.constants import COLORS, MESSAGES
 from player.player_manager import get_player
-
-from services.youtube_service import (
-    get_track_info,
-    search_track
-)
-
-from services.autocomplete_service import (
-    play_autocomplete
-)
-
+from services.autocomplete_service import play_autocomplete
+from services.spotify_service import get_spotify_track_query, is_spotify_track_url
+from services.youtube_service import get_track_info, search_track
 from ui.embeds import create_embed
-
-from data.constants import (
-    COLORS,
-    MESSAGES
-)
-
-from commands.command_utils import (
-    send_followup_error
-)
 
 
 def register_play_command(bot):
@@ -32,7 +17,7 @@ def register_play_command(bot):
         description="Play a song or add it to queue"
     )
     @app_commands.describe(
-        query="Song name or YouTube URL"
+        query="Song name or YouTube / Spotify URL"
     )
     @app_commands.autocomplete(
         query=play_autocomplete
@@ -67,7 +52,17 @@ def register_play_command(bot):
 
         try:
 
-            if query.startswith(
+            if is_spotify_track_url(query):
+
+                spotify_query = await get_spotify_track_query(
+                    query
+                )
+
+                track = await search_track(
+                    spotify_query
+                )
+
+            elif query.startswith(
                 (
                     "http://",
                     "https://"

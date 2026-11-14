@@ -1,17 +1,11 @@
 import asyncio
 import re
 import time
-
 from urllib.parse import urlparse
 
 import aiohttp
 
-from config import (
-    SPOTIFY_CLIENT_ID,
-    SPOTIFY_CLIENT_SECRET,
-    SPOTIFY_MARKET
-)
-
+from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_MARKET
 
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 
