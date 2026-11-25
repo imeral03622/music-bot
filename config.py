@@ -10,7 +10,7 @@ if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found")
 
 
-BOT_VERSION = "0.1.3"
+BOT_VERSION = "0.1.4"
 
 GUILD_ID = 1055384191459659817
 
