@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from data.constants import COLORS
 
 import discord
+
+from data.constants import COLORS
 
 
 @dataclass

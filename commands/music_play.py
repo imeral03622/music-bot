@@ -27,11 +27,21 @@ def register_play_command(bot):
         query: str
     ):
 
+        assert interaction.guild is not None
         player = get_player(
             interaction.guild.id
         )
 
         await interaction.response.defer()
+
+        if not isinstance(interaction.user, discord.Member):
+
+            await send_followup_error(
+                interaction,
+                MESSAGES["not_in_voice"]
+            )
+
+            return
 
         if interaction.user.voice is None:
 
@@ -46,6 +56,7 @@ def register_play_command(bot):
 
         if voice_client is None:
 
+            assert interaction.user.voice.channel is not None
             voice_client = await (
                 interaction.user.voice.channel.connect()
             )
@@ -79,7 +90,7 @@ def register_play_command(bot):
                     query
                 )
 
-        except Exception as error:
+        except (OSError, RuntimeError, ValueError) as error:
 
             print(error)
 
@@ -90,7 +101,10 @@ def register_play_command(bot):
 
             return
 
-        if voice_client.is_playing():
+        if (
+            isinstance(voice_client, discord.VoiceClient)
+            and voice_client.is_playing()
+        ):
 
             player.add_to_queue(
                 track
@@ -119,7 +133,8 @@ def register_play_command(bot):
                 "Loading...",
                 track.title,
                 COLORS["info"]
-            )
+            ),
+            wait=True
         )
 
         await player.play_song(
@@ -127,9 +142,11 @@ def register_play_command(bot):
             track
         )
 
-        try:
+        if loading_message is not None:
 
-            await loading_message.delete()
+            try:
 
-        except Exception:
-            pass
+                await loading_message.delete()
+
+            except discord.HTTPException:
+                pass

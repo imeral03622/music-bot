@@ -1,20 +1,10 @@
 import discord
-
 from discord import app_commands
 
+from commands.command_utils import send_error, send_success
+from data.constants import COLORS, MESSAGES
 from player.player_manager import get_player
-
 from ui.embeds import create_embed
-
-from data.constants import (
-    COLORS,
-    MESSAGES
-)
-
-from commands.command_utils import (
-    send_error,
-    send_success
-)
 
 
 def register_queue_commands(bot):
@@ -27,6 +17,7 @@ def register_queue_commands(bot):
         interaction: discord.Interaction
     ):
 
+        assert interaction.guild is not None
         player = get_player(
             interaction.guild.id
         )
@@ -69,6 +60,7 @@ def register_queue_commands(bot):
         interaction: discord.Interaction
     ):
 
+        assert interaction.guild is not None
         player = get_player(
             interaction.guild.id
         )
@@ -92,6 +84,7 @@ def register_queue_commands(bot):
         position: int
     ):
 
+        assert interaction.guild is not None
         player = get_player(
             interaction.guild.id
         )

@@ -125,53 +125,51 @@ async def _get_access_token() -> str:
 
             async with aiohttp.ClientSession(
                 timeout=HTTP_TIMEOUT
-            ) as session:
+            ) as session, session.post(
+                SPOTIFY_TOKEN_URL,
+                auth=aiohttp.BasicAuth(
+                    SPOTIFY_CLIENT_ID,
+                    SPOTIFY_CLIENT_SECRET
+                ),
+                data={
+                    "grant_type": "client_credentials"
+                }
+            ) as response:
 
-                async with session.post(
-                    SPOTIFY_TOKEN_URL,
-                    auth=aiohttp.BasicAuth(
-                        SPOTIFY_CLIENT_ID,
-                        SPOTIFY_CLIENT_SECRET
-                    ),
-                    data={
-                        "grant_type": "client_credentials"
-                    }
-                ) as response:
+                if response.status != 200:
 
-                    if response.status != 200:
+                    response_text = await response.text()
 
-                        response_text = await response.text()
-
-                        raise SpotifyAuthenticationError(
-                            f"Spotify authentication failed: "
-                            f"{response.status} - {response_text}"
-                        )
-
-                    data = await response.json()
-
-                    access_token = data.get(
-                        "access_token"
+                    raise SpotifyAuthenticationError(
+                        f"Spotify authentication failed: "
+                        f"{response.status} - {response_text}"
                     )
 
-                    expires_in = data.get(
-                        "expires_in",
-                        3600
+                data = await response.json()
+
+                access_token = data.get(
+                    "access_token"
+                )
+
+                expires_in = data.get(
+                    "expires_in",
+                    3600
+                )
+
+                if not access_token:
+                    raise SpotifyAuthenticationError(
+                        "Spotify did not return an access token"
                     )
 
-                    if not access_token:
-                        raise SpotifyAuthenticationError(
-                            "Spotify did not return an access token"
-                        )
+                _access_token = access_token
 
-                    _access_token = access_token
+                _token_expires_at = (
+                    time.monotonic()
+                    + int(expires_in)
+                    - 60
+                )
 
-                    _token_expires_at = (
-                        time.monotonic()
-                        + int(expires_in)
-                        - 60
-                    )
-
-                    return _access_token
+                return _access_token
 
         except SpotifyServiceError:
             raise
@@ -218,53 +216,51 @@ async def get_spotify_track_query(url: str) -> str:
 
         async with aiohttp.ClientSession(
             timeout=HTTP_TIMEOUT
-        ) as session:
+        ) as session, session.get(
+            request_url,
+            headers=headers,
+            params=params
+        ) as response:
 
-            async with session.get(
-                request_url,
-                headers=headers,
-                params=params
-            ) as response:
+            if response.status == 404:
+                raise SpotifyTrackNotFoundError(
+                    "Spotify track was not found"
+                )
 
-                if response.status == 404:
-                    raise SpotifyTrackNotFoundError(
-                        "Spotify track was not found"
-                    )
+            if response.status == 401:
 
-                if response.status == 401:
+                global _access_token
+                global _token_expires_at
 
-                    global _access_token
-                    global _token_expires_at
+                _access_token = None
+                _token_expires_at = 0
 
-                    _access_token = None
-                    _token_expires_at = 0
+                raise SpotifyAuthenticationError(
+                    "Spotify access token was rejected"
+                )
 
-                    raise SpotifyAuthenticationError(
-                        "Spotify access token was rejected"
-                    )
+            if response.status == 429:
 
-                if response.status == 429:
+                retry_after = response.headers.get(
+                    "Retry-After",
+                    "unknown"
+                )
 
-                    retry_after = response.headers.get(
-                        "Retry-After",
-                        "unknown"
-                    )
+                raise SpotifyAPIError(
+                    f"Spotify rate limit exceeded. "
+                    f"Retry after: {retry_after}"
+                )
 
-                    raise SpotifyAPIError(
-                        f"Spotify rate limit exceeded. "
-                        f"Retry after: {retry_after}"
-                    )
+            if response.status != 200:
 
-                if response.status != 200:
+                response_text = await response.text()
 
-                    response_text = await response.text()
+                raise SpotifyAPIError(
+                    f"Spotify API error: "
+                    f"{response.status} - {response_text}"
+                )
 
-                    raise SpotifyAPIError(
-                        f"Spotify API error: "
-                        f"{response.status} - {response_text}"
-                    )
-
-                data = await response.json()
+            data = await response.json()
 
     except SpotifyServiceError:
         raise

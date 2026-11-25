@@ -1,9 +1,18 @@
-import yt_dlp
 import asyncio
+import logging
+from typing import Any, cast
+
+import yt_dlp
 
 from config import YDL_OPTIONS
-
 from models.track import Track
+
+logger = logging.getLogger(__name__)
+
+
+class NoSearchResultsError(Exception):
+    """Raised when yt-dlp returns no usable search results."""
+
 
 async def get_track_info(
     query: str
@@ -12,7 +21,7 @@ async def get_track_info(
     def extract():
 
         with yt_dlp.YoutubeDL(
-            YDL_OPTIONS
+            cast(Any, YDL_OPTIONS)
         ) as ydl:
 
             if query.startswith(
@@ -31,23 +40,23 @@ async def get_track_info(
                     download=False
                 )
 
-                info = info["entries"][0]
+                entries = list(cast(Any, info.get("entries") or []))
+                if not entries:
+                    raise NoSearchResultsError("No track found")
+                info = entries[0]
+
+            title = info.get("title") or "unknown"
+            duration = int(info.get("duration") or 0)
 
             return Track(
-                title=info.get(
-                    "title",
-                    "unknown"
-                ),
+                title=title,
                 url=info.get(
                     "original_url"
                 ) or query,
                 webpage_url=info.get(
                     "webpage_url"
                 ) or query,
-                duration=info.get(
-                    "duration",
-                    0
-                ),
+                duration=duration,
                 thumbnail=info.get(
                     "thumbnail"
                 ),
@@ -82,7 +91,7 @@ async def get_fresh_stream_url(
         }
 
         with yt_dlp.YoutubeDL(
-            ydl_opts
+            cast(Any, ydl_opts)
         ) as ydl:
 
             info = ydl.extract_info(
@@ -92,8 +101,8 @@ async def get_fresh_stream_url(
 
             formats = info.get(
                 "formats",
-                []
-            )
+                [],
+            ) or []
 
             audio_formats = [
                 fmt
@@ -108,9 +117,14 @@ async def get_fresh_stream_url(
                 else None
             )
 
-            return (
+            stream_url = (
                 best or info
             ).get("url")
+
+            if not isinstance(stream_url, str):
+                raise TypeError("No audio stream URL found")
+
+            return stream_url
 
     return await asyncio.to_thread(
         extract
@@ -124,7 +138,7 @@ async def search_track(
     def extract():
 
         with yt_dlp.YoutubeDL(
-            YDL_OPTIONS
+            cast(Any, YDL_OPTIONS)
         ) as ydl:
 
             search_sources = [
@@ -151,14 +165,14 @@ async def search_track(
                     if not info:
                         continue
 
-                    entries = info.get(
-                        "entries",
-                        []
-                    )
+                    entries = list(cast(Any, info.get("entries") or []))
 
                     best_entry = None
 
                     for entry in entries:
+
+                        if not entry:
+                            continue
 
                         duration = int(
                             entry.get(
@@ -180,16 +194,13 @@ async def search_track(
                     if not best_entry:
                         continue
 
+                    title = best_entry.get("title") or "unknown"
+                    webpage_url = best_entry.get("webpage_url") or query
+
                     return Track(
-                        title=best_entry.get(
-                            "title",
-                            "unknown"
-                        ),
+                        title=title,
                         url=query,
-                        webpage_url=best_entry.get(
-                            "webpage_url",
-                            query
-                        ),
+                        webpage_url=webpage_url,
                         duration=int(
                             best_entry.get(
                                 "duration",
@@ -202,10 +213,11 @@ async def search_track(
                         source=source_name
                     )
 
-                except Exception:
+                except yt_dlp.utils.DownloadError:
+                    logger.exception("YouTube search failed for %r", query)
                     continue
 
-            raise Exception(
+            raise NoSearchResultsError(
                 "No search results"
             )
 

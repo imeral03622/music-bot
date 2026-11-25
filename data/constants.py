@@ -1,6 +1,5 @@
 import discord
 
-
 EMOJIS = {
 
     "skip":

@@ -1,17 +1,12 @@
 import asyncio
+import logging
+from typing import Any, cast
+
 import discord
 
-from config import (
-    AUTO_DISCONNECT_SECONDS,
-    FFMPEG_OPTIONS
-)
-
-from services.youtube_service import (
-    get_fresh_stream_url
-)
-
+from config import AUTO_DISCONNECT_SECONDS, FFMPEG_OPTIONS
 from models.track import Track
-
+from services.youtube_service import get_fresh_stream_url
 from ui.controls import PlayerControls
 
 
@@ -60,8 +55,8 @@ class MusicPlayer:
                 view=None
             )
 
-        except Exception:
-            pass
+        except discord.HTTPException:
+            logging.exception("Failed to disable the player message")
 
         self.player_message = None
 
@@ -93,8 +88,8 @@ class MusicPlayer:
         )
 
         source = discord.FFmpegPCMAudio(
-            stream_url,
-            **FFMPEG_OPTIONS
+            source=stream_url,
+            **cast(Any, FFMPEG_OPTIONS)
         )
 
         voice.play(

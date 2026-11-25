@@ -1,23 +1,13 @@
 import asyncio
 import time
+
 import discord
-
 from discord.ext import commands
-
-from config import (
-    TOKEN,
-    MAIN_CHANNEL_ID,
-    STATUS_CHANNEL_ID,
-    CLOCK_SYNC_DELAY_SECONDS
-)
 
 from commands.music import register_music_commands
 from commands.system import register_system_commands
-
-from services.heartbeat_service import (
-    heartbeat_loop,
-    load_status
-)
+from config import CLOCK_SYNC_DELAY_SECONDS, STATUS_CHANNEL_ID, TOKEN
+from services.heartbeat_service import heartbeat_loop, load_status
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -75,7 +65,7 @@ async def on_ready():
             STATUS_CHANNEL_ID
         )
 
-        if channel:
+        if isinstance(channel, discord.abc.Messageable):
 
             minutes = downtime // 60
             seconds = downtime % 60
@@ -127,5 +117,8 @@ async def wait_for_clock_sync(last_seen: int) -> int:
             return now
 
         await asyncio.sleep(1)
+
+if TOKEN is None:
+    raise RuntimeError("DISCORD token is not configured")
 
 bot.run(TOKEN)

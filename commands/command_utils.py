@@ -1,9 +1,6 @@
 import discord
 
-from data.constants import (
-    COLORS
-)
-
+from data.constants import COLORS
 from ui.embeds import create_embed
 
 

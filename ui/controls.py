@@ -1,11 +1,7 @@
 import discord
 
-#from player.player_manager import get_player
+from data.constants import COLORS, EMOJIS
 from ui.embeds import create_embed
-from data.constants import (
-    EMOJIS,
-    COLORS
-)
 
 
 class PlayerControls(discord.ui.View):
@@ -25,9 +21,10 @@ class PlayerControls(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
+        assert interaction.guild is not None
         voice = interaction.guild.voice_client
 
-        if voice and voice.is_playing():
+        if isinstance(voice, discord.VoiceClient) and voice.is_playing():
 
             voice.stop()
 
@@ -80,15 +77,12 @@ class PlayerControls(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
+        assert interaction.guild is not None
         voice = interaction.guild.voice_client
-
-        # player = get_player(
-        #     interaction.guild.id
-        # )
 
         self.player.clear_queue()
 
-        if voice:
+        if isinstance(voice, discord.VoiceClient):
             voice.stop()
 
         await interaction.response.send_message(

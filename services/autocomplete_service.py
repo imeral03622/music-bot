@@ -1,9 +1,6 @@
+from importlib import import_module
+
 from discord import app_commands
-
-from ytmusicapi import YTMusic
-
-
-ytmusic = YTMusic()
 
 
 async def autocomplete_tracks(
@@ -15,6 +12,7 @@ async def autocomplete_tracks(
         return []
 
     def search():
+        ytmusic = import_module("ytmusicapi").YTMusic()
 
         results = ytmusic.search(
             current,
@@ -77,6 +75,14 @@ async def play_autocomplete(
             in tracks[:15]
         ]
 
-    except Exception:
+    except (
+        AttributeError,
+        ImportError,
+        KeyError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
 
         return []

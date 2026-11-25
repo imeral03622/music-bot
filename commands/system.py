@@ -1,8 +1,8 @@
 import discord
 
-from ui.embeds import create_embed
 from config import GUILD_ID
 from data.constants import COLORS
+from ui.embeds import create_embed
 
 
 def register_system_commands(bot):
@@ -30,7 +30,7 @@ def register_system_commands(bot):
                 f"synced {len(synced)} commands"
             )
 
-        except Exception as e:
+        except discord.HTTPException as e:
             print(e)
 
         print(

@@ -1,18 +1,11 @@
+from typing import cast
+
 import discord
 
+from commands.command_utils import send_error, send_success
+from data.constants import COLORS, MESSAGES
 from player.player_manager import get_player
-
 from ui.embeds import create_embed
-
-from data.constants import (
-    COLORS,
-    MESSAGES
-)
-
-from commands.command_utils import (
-    send_error,
-    send_success
-)
 
 
 def register_player_commands(bot):
@@ -24,6 +17,14 @@ def register_player_commands(bot):
     async def nowplaying(
         interaction: discord.Interaction
     ):
+
+        if interaction.guild is None:
+            await send_error(
+                interaction,
+                "This command can only be used in a server."
+            )
+
+            return
 
         player = get_player(
             interaction.guild.id
@@ -67,6 +68,7 @@ def register_player_commands(bot):
         interaction: discord.Interaction
     ):
 
+        assert interaction.guild is not None
         voice_client = interaction.guild.voice_client
 
         if voice_client is None:
@@ -78,7 +80,7 @@ def register_player_commands(bot):
 
             return
 
-        if not voice_client.is_playing():
+        if not cast(discord.VoiceClient, voice_client).is_playing():
 
             await send_error(
                 interaction,
@@ -87,7 +89,7 @@ def register_player_commands(bot):
 
             return
 
-        voice_client.stop()
+        cast(discord.VoiceClient, voice_client).stop()
 
         await send_success(
             interaction,
@@ -103,6 +105,7 @@ def register_player_commands(bot):
         interaction: discord.Interaction
     ):
 
+        assert interaction.guild is not None
         player = get_player(
             interaction.guild.id
         )
@@ -131,6 +134,7 @@ def register_player_commands(bot):
         interaction: discord.Interaction
     ):
 
+        assert interaction.guild is not None
         player = get_player(
             interaction.guild.id
         )
@@ -141,7 +145,7 @@ def register_player_commands(bot):
         voice_client = interaction.guild.voice_client
 
         if voice_client is not None:
-            voice_client.stop()
+            cast(discord.VoiceClient, voice_client).stop()
 
         await send_success(
             interaction,
@@ -157,6 +161,7 @@ def register_player_commands(bot):
         interaction: discord.Interaction
     ):
 
+        assert interaction.guild is not None
         player = get_player(
             interaction.guild.id
         )
@@ -168,7 +173,7 @@ def register_player_commands(bot):
         player.repeat_mode = False
 
         if voice_client is not None:
-            await voice_client.disconnect()
+            await voice_client.disconnect(force=True)
 
         await send_success(
             interaction,
